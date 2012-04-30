@@ -5,6 +5,6 @@ gem 'ruby_parser'
 gem 'hpricot'
 gem 'erubis'
 gem 'sass'
-gem 'rails', '>= 2.1.0', '< 2.2.0'
+gem 'rails', '>= 3.2.0', '< 3.3.0'
 gem 'minitest'
 

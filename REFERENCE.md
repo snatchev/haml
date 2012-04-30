@@ -133,6 +133,10 @@ Available options are:
   Other options are `:html4` and `:html5`, which are
   identical to `:xhtml` except there are no self-closing tags,
   the XML prolog is ignored and correct DOCTYPEs are generated.
+  <br/><br/> <!-- There's no better way to do a paragraph break in a dl in Maruku -->
+  If the mime_type of the template being rendered is `text/xml` then
+  a format of `:xhtml` will be used even if the global output format
+  is set to `:html4` or `:html5`.
 
 {#escape_html-option} `:escape_html`
 : Sets whether or not to escape HTML-sensitive characters in script.
@@ -171,6 +175,11 @@ Available options are:
   of this type within the attributes will be escaped
   (e.g. by replacing them with `&apos;`) if
   the character is an apostrophe or a quotation mark.
+
+{#hyphenate_data_attrs} `:hyphenate_data_attrs`
+: If set to `true`, Haml will convert underscores to hyphens in all
+  [Custom Data Attributes](#html5_custom_data_attributes)
+  As of Haml 3.2, this defaults to `true`.
 
 {#filename-option} `:filename`
 : The name of the Haml file being parsed.
@@ -520,6 +529,13 @@ For example:
 
 will render as:
 
+    <a data-author-id='123' href='/posts'>Posts By Author</a>
+
+Notice that the underscore in `author_id` was replaced by a hyphen. If you wish
+to suppress this behavior, you can set Haml's [`:hyphenate_data_attrs`
+option](#hyphenate_data_attrs-option) to `false`, and the output will be
+rendered as:
+
     <a data-author_id='123' href='/posts'>Posts By Author</a>
 
 ### Class and ID: `.` and `#`
@@ -839,6 +855,10 @@ is compiled to:
 
     <?xml version='1.0' encoding='iso-8859-1' ?>
 
+If the mime_type of the template being rendered is `text/xml` then
+a format of `:xhtml` will be used even if the global output format
+is set to `:html4` or `:html5`.
+
 ## Comments
 
 Haml supports two sorts of comments:
@@ -922,6 +942,7 @@ For example:
     -#
       This won't be displayed
         Nor will this
+                       Nor will this.
     %p bar
 
 is compiled to:
@@ -1258,6 +1279,11 @@ Embedded Ruby code is evaluated in the same context as the Haml template.
 {#sass-filter}
 ### `:sass`
 Parses the filtered text with Sass to produce CSS output.
+
+{#scss-filter}
+### `:scss`
+Parses the filtered text with Sass like the `:sass` filter, but uses the newer SCSS
+syntax to produce CSS output.
 
 {#textile-filter}
 ### `:textile`

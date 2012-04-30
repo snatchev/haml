@@ -53,10 +53,22 @@ END
       push_text @node.value[:text]
     end
 
+    def nuke_inner_whitespace?(node)
+      if node.value && node.value[:nuke_inner_whitespace]
+        true
+      elsif node.parent
+        nuke_inner_whitespace?(node.parent)
+      else
+        false
+      end
+    end
+
     def compile_script(&block)
       push_script(@node.value[:text],
-        :preserve_script => @node.value[:preserve],
-        :escape_html => @node.value[:escape_html], &block)
+                  :preserve_script       => @node.value[:preserve],
+                  :escape_html           => @node.value[:escape_html],
+                  :nuke_inner_whitespace => nuke_inner_whitespace?(@node),
+                  &block)
     end
 
     def compile_silent_script
@@ -345,14 +357,14 @@ END
     end
 
     # This is a class method so it can be accessed from Buffer.
-    def self.build_attributes(is_html, attr_wrapper, escape_attrs, attributes = {})
-      quote_escape = attr_wrapper == '"' ? "&quot;" : "&apos;"
+    def self.build_attributes(is_html, attr_wrapper, escape_attrs, hyphenate_data_attrs, attributes = {})
+      quote_escape = attr_wrapper == '"' ? "&#x0022;" : "&#x0027;"
       other_quote_char = attr_wrapper == '"' ? "'" : '"'
 
       if attributes['data'].is_a?(Hash)
-        attributes = attributes.dup
-        attributes =
-          Haml::Util.map_keys(attributes.delete('data')) {|name| "data-#{name}"}.merge(attributes)
+        data_attributes = attributes.delete('data')
+        data_attributes = build_data_keys(data_attributes, hyphenate_data_attrs)
+        attributes = data_attributes.merge(attributes)
       end
 
       result = attributes.collect do |attr, value|
@@ -379,7 +391,7 @@ END
         value = Haml::Helpers.preserve(escaped)
         if escape_attrs
           # We want to decide whether or not to escape quotes
-          value = value.gsub('&quot;', '"')
+          value = value.gsub('&quot;', '"').gsub('&#x0022;', '"')
           this_attr_wrapper = attr_wrapper
           if value.include? attr_wrapper
             if value.include? other_quote_char
@@ -403,9 +415,21 @@ END
       return !value.empty? && value
     end
 
+    def self.build_data_keys(data_hash, hyphenate)
+      Haml::Util.map_keys(data_hash) do |name| 
+        if name == nil
+          "data"
+        elsif hyphenate
+          "data-#{name.to_s.gsub(/_/, '-')}"
+        else
+          "data-#{name}"
+        end
+      end
+    end
+
     def prerender_tag(name, self_close, attributes)
       attributes_string = Compiler.build_attributes(
-        html?, @options[:attr_wrapper], @options[:escape_attrs], attributes)
+        html?, @options[:attr_wrapper], @options[:escape_attrs], @options[:hyphenate_data_attrs], attributes)
       "<#{name}#{attributes_string}#{self_close && xhtml? ? ' /' : ''}>"
     end
 
@@ -442,7 +466,8 @@ END
     end
 
     def compile(node)
-      parent, @node = @node, node
+      parent = instance_variable_defined?('@node') ? @node : nil
+      @node = node
       if node.children.empty?
         send(:"compile_#{node.type}")
       else

@@ -302,14 +302,6 @@ module Haml
       obj
     end
 
-    # Throws a NotImplementedError for an abstract method.
-    #
-    # @param obj [Object] `self`
-    # @raise [NotImplementedError]
-    def abstract(obj)
-      raise NotImplementedError.new("#{obj.class} must implement ##{caller_info[2]}")
-    end
-
     # Silence all output to STDERR within a block.
     #
     # @yield A block in which no output will be printed to STDERR
@@ -338,35 +330,6 @@ module Haml
     def haml_warn(msg)
       return if @@silence_warnings
       warn(msg)
-    end
-
-    # Try loading Sass. If the `sass` gem isn't installed,
-    # print a warning and load from the vendored gem.
-    #
-    # @return [Boolean] True if Sass was successfully loaded from the `sass` gem,
-    #   false otherwise.
-    def try_sass
-      return true if defined?(::SASS_BEGUN_TO_LOAD)
-      begin
-        require 'sass/version'
-        loaded = Sass.respond_to?(:version) && Sass.version[:major] &&
-          Sass.version[:minor] && ((Sass.version[:major] > 3 && Sass.version[:minor] > 1) ||
-          ((Sass.version[:major] == 3 && Sass.version[:minor] == 1) &&
-            (Sass.version[:prerelease] || Sass.version[:name] != "Bleeding Edge")))
-      rescue LoadError => e
-        loaded = false
-      end
-
-      unless loaded
-        haml_warn(<<WARNING)
-Sass is in the process of being separated from Haml,
-and will no longer be bundled at all in Haml 3.2.0.
-Please install the 'sass' gem if you want to use Sass.
-WARNING
-        $".delete('sass/version')
-        $LOAD_PATH.unshift(scope("vendor/sass/lib"))
-      end
-      loaded
     end
 
     ## Cross Rails Version Compatibility

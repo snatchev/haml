@@ -6,3 +6,6 @@
 /.haml
 /site
 *.rbc
+.rbenv-version
+Gemfile.lock
+.rvmrc

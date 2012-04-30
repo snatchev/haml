@@ -1,5 +1,4 @@
-#!/usr/bin/env ruby
-require File.dirname(__FILE__) + '/../test_helper'
+require File.dirname(__FILE__) + '/test_helper'
 require 'sass/plugin'
 require File.dirname(__FILE__) + '/mocks/article'
 
@@ -30,7 +29,7 @@ class DummyController
   def initialize
     @logger = Egocentic.new
   end
-    
+
   def self.controller_path
     ''
   end
@@ -40,7 +39,7 @@ class DummyController
   end
 end
 
-class TemplateTest < Test::Unit::TestCase
+class TemplateTest < MiniTest::Unit::TestCase
   TEMPLATE_PATH = File.join(File.dirname(__FILE__), "templates")
   TEMPLATES = %w{         very_basic        standard    helpers
     whitespace_handling   original_engine   list        helpful
@@ -59,7 +58,7 @@ class TemplateTest < Test::Unit::TestCase
 
   def create_base
     vars = { 'article' => Article.new, 'foo' => 'value one' }
-    
+
     unless Haml::Util.has?(:instance_method, ActionView::Base, :finder)
       base = ActionView::Base.new(TEMPLATE_PATH, vars)
     else
@@ -67,7 +66,7 @@ class TemplateTest < Test::Unit::TestCase
       base = ActionView::Base.new([], vars)
       base.finder.append_view_path(TEMPLATE_PATH)
     end
-    
+
     if Haml::Util.has?(:private_method, base, :evaluate_assigns)
       # Rails < 3.0
       base.send(:evaluate_assigns)
@@ -109,9 +108,9 @@ class TemplateTest < Test::Unit::TestCase
     Haml::Template.options[:escape_html] = false
     if ActionPack::VERSION::MAJOR < 2 ||
         (ActionPack::VERSION::MAJOR == 2 && ActionPack::VERSION::MINOR < 2)
-      render_method ||= proc { |name| @base.render(name) }
+      render_method ||= proc { |n| @base.render(n) }
     else
-      render_method ||= proc { |name| @base.render(:file => name) }
+      render_method ||= proc { |n| @base.render(:file => n) }
     end
 
     load_result(name).split("\n").zip(render_method[name].split("\n")).each_with_index do |pair, line|
@@ -144,7 +143,7 @@ class TemplateTest < Test::Unit::TestCase
       engine.render_proc(@base).call
     end
   end
-  
+
   def test_templates_should_render_correctly_with_def_method
     assert_renders_correctly("standard") do |name|
       engine = Haml::Engine.new(File.read(File.dirname(__FILE__) + "/templates/#{name}.haml"))
@@ -195,7 +194,7 @@ class TemplateTest < Test::Unit::TestCase
 
   unless Haml::Util.ap_geq_3?
     def test_form_for_error_return
-      assert_raise(Haml::Error) { render(<<HAML) }
+      assert_raises(Haml::Error) { render(<<HAML) }
 = form_for :article, @article, :url => '' do |f|
   Title:
   = f.text_field :title
@@ -205,7 +204,7 @@ HAML
     end
 
     def test_form_tag_error_return
-      assert_raise(Haml::Error) { render(<<HAML) }
+      assert_raises(Haml::Error) { render(<<HAML) }
 = form_tag '' do
   Title:
   Body:

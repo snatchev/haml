@@ -6,15 +6,55 @@
 ## 3.2.0 (Unreleased)
 
 * Add Kramdown support to Markdown filter.
+
 * Add RedCarpet support to Markdown filter.
-* Performance improvements (thanks to [Chris Heald](https://github.com/cheald)).
-* Generate object references based on `#to_key` if it exists in preference to `#id`.
+
+* Generate object references based on `#to_key` if it exists in preference to
+  `#id`.
+
+* Performance improvements.
+  (thanks to [Chris Heald](https://github.com/cheald))
+
+* Add an {file:REFERENCE.md#hyphenate_data_attrs-option `:hyphenate_data_attrs`
+  option} that converts underscores to hyphens in your HTML5 data keys. This is
+  a language change from 3.1 and is enabled by default.
+  (thanks to [Andrew Smith](https://github.com/fullsailor))
+
+* Add SCSS filter.
+  (thanks to [Matt Wildig](https://github.com/mattwildig))
+
+* Helper `list_of` takes an extra argument that is rendered into list item
+  attributes.
+  (thanks  [Iain Barnett](http://iainbarnett.me.uk/))
+
+* Fix parser to allow lines ending with `some_method?` to be a Ruby multinline.
+  (thanks to [Brad Ediger](https://github.com/bradediger))
+
+* Always use :xhtml format when the mime_type of the rendered template is
+  'text/xml'.
+  (thanks to [Stephen Bannasch](https://github.com/stepheneb))
+
+* html2haml now includes an `--html-attributes` option.
+  (thanks [Stefan Natchev](https://github.com/snatchev))
+
+* Fix for inner whitespace removal in loops.
+  (thanks [Richard Michael](https://github.com/richardkmichael))
+
+* Use numeric character references rather than HTML entities when escaping
+  double quotes and apostrophes in attributes. This works around some bugs in
+  Internet Explorer earlier than version 9.
+  (thanks [Doug Mayer](https://github.com/doxavore))
+
+* Fix multiline silent comments: Haml previously did not allow free indentation
+  inside multline silent comments.
 
 ## 3.1.5 (Unreleased)
 
 * Respect Rails' `html_safe` flag when escaping attribute values
   (thanks to [Gerad Suyderhoud](https://github.com/gerad)).
->>>>>>> stable
+
+* Fix for Rails 3.2.3 textarea helpers
+  (thanks to [James Coleman](https://github.com/jcoleman) and others).
 
 ## 3.1.4
 
@@ -35,6 +75,8 @@
 * Fix html2haml.
 
 * Fix an issue where destructive modification was sometimes performed on Rails SafeBuffers.
+
+* Use character code entities for attribute value replacements instead of named/keyword entities.
 
 ## 3.1.1
 
@@ -414,7 +456,7 @@ won't do any indentation of their arguments.
 * All attribute values may be non-String types.
   Their `#to_s` method will be called to convert them to strings.
   Previously, this only worked for attributes other than `class`.
-  
+
 ### `:class` and `:id` Attributes Accept Ruby Arrays
 
 In an attribute hash, the `:class` attribute now accepts an Array
@@ -907,7 +949,7 @@ There are several components to this:
 
 * Fixed CSS id concatenation when a numeric id is given as an attribute.
   (thanks to [Norman Clarke](http://blog.njclarke.com/)).
-  
+
 * Fixed a couple bugs with using "-end" in strings.
 
 ## 2.2.4

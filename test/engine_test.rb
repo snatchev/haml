@@ -1,8 +1,7 @@
-#!/usr/bin/env ruby
 # -*- coding: utf-8 -*-
-require File.dirname(__FILE__) + '/../test_helper'
+require File.dirname(__FILE__) + '/test_helper'
 
-class EngineTest < Test::Unit::TestCase
+class EngineTest < MiniTest::Unit::TestCase
   # A map of erroneous Haml documents to the error messages they should produce.
   # The error messages may be arrays;
   # if so, the second element should be the line number that should be reported for the error.
@@ -64,9 +63,9 @@ MESSAGE
     "%p{:foo => 'bar' :bar => 'baz'}" => :compile,
     "%p{:foo => }" => :compile,
     "%p{=> 'bar'}" => :compile,
-    "%p{:foo => 'bar}" => :compile,
     "%p{'foo => 'bar'}" => :compile,
-    "%p{:foo => 'bar\"}" => :compile,
+    "%p{:foo => 'bar}" => :unterminated_string,
+    "%p{:foo => 'bar\"}" => :unterminated_string,
 
     # Regression tests
     "- raise 'foo'\n\n\n\nbar" => ["foo", 1],
@@ -106,7 +105,7 @@ MESSAGE
     locals = options.delete(:locals) || {}
     engine(text, options).to_html(scope, locals, &block)
   end
-  
+
   def engine(text, options = {})
     unless options[:filename]
       # use caller method name as fake filename. useful for debugging
@@ -371,6 +370,16 @@ HAML
                  render("%p{:foo => 'bar', :bar => false, :baz => 'false'}", :format => :html4))
     assert_equal("<p baz='false' foo='bar'></p>\n",
                  render("%p{:foo => 'bar', :bar => false, :baz => 'false'}", :format => :xhtml))
+  end
+
+  def test_nuke_inner_whitespace_in_loops
+    assert_equal(<<HTML, render(<<HAML))
+<ul>foobarbaz</ul>
+HTML
+%ul<
+  - for str in %w[foo bar baz]
+    = str
+HAML
   end
 
   def test_both_whitespace_nukes_work_together
@@ -964,7 +973,7 @@ HAML
   def test_bang_equals_inline_should_not_escape
     assert_equal("<p>foo & bar</p>\n", render("%p!= 'foo & bar'", :escape_html => true))
   end
-  
+
   def test_static_attributes_should_be_escaped
     assert_equal("<img class='atlantis' style='ugly&amp;stupid' />\n",
                  render("%img.atlantis{:style => 'ugly&stupid'}"))
@@ -1118,7 +1127,7 @@ HAML
     assert_equal("<p strange=*attrs*></p>\n", render("%p{ :strange => 'attrs'}", :attr_wrapper => '*'))
     assert_equal("<p escaped='quo\"te'></p>\n", render("%p{ :escaped => 'quo\"te'}", :attr_wrapper => '"'))
     assert_equal("<p escaped=\"quo'te\"></p>\n", render("%p{ :escaped => 'quo\\'te'}", :attr_wrapper => '"'))
-    assert_equal("<p escaped=\"q'uo&quot;te\"></p>\n", render("%p{ :escaped => 'q\\'uo\"te'}", :attr_wrapper => '"'))
+    assert_equal("<p escaped=\"q'uo&#x0022;te\"></p>\n", render("%p{ :escaped => 'q\\'uo\"te'}", :attr_wrapper => '"'))
     assert_equal("<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n", render("!!! XML", :attr_wrapper => '"'))
   end
 
@@ -1147,7 +1156,7 @@ HAML
     assert_equal("<p class='foo'>deep {nested { things }}</p>\n", render("%p{:class => 'foo'} deep {nested { things }}"))
     assert_equal("<p class='bar foo'>{a { d</p>\n", render("%p{{:class => 'foo'}, :class => 'bar'} {a { d"))
     assert_equal("<p foo='bar'>a}</p>\n", render("%p{:foo => 'bar'} a}"))
-    
+
     foo = []
     foo[0] = Struct.new('Foo', :id).new
     assert_equal("<p class='struct_foo' id='struct_foo_new'>New User]</p>\n",
@@ -1161,12 +1170,12 @@ HAML
     assert_equal("<p class='prefix_struct_foo' id='prefix_struct_foo_1'>New User]</p>\n",
                  render("%p[foo[0], :prefix] New User]", :locals => {:foo => foo}))
   end
-  
+
   def test_empty_attrs
     assert_equal("<p attr=''>empty</p>\n", render("%p{ :attr => '' } empty"))
     assert_equal("<p attr=''>empty</p>\n", render("%p{ :attr => x } empty", :locals => {:x => ''}))
   end
-  
+
   def test_nil_attrs
     assert_equal("<p>nil</p>\n", render("%p{ :attr => nil } nil"))
     assert_equal("<p>nil</p>\n", render("%p{ :attr => x } nil", :locals => {:x => nil}))
@@ -1208,8 +1217,14 @@ HAML
         line_no ||= key.split("\n").length
 
         if expected_message == :compile
-          if Haml::Util.ruby1_8?
+          if RUBY_VERSION < "1.9" && !jruby?
             assert_match(/^compile error\n/, err.message, "Line: #{key}")
+          else
+            assert_match(/^#{Regexp.quote __FILE__}:#{line_no}: syntax error,/, err.message, "Line: #{key}")
+          end
+        elsif expected_message == :unterminated_string
+          if jruby?
+            assert_match(/^#{Regexp.quote __FILE__}:#{line_no}: unterminated string meets end of file/, err.message, "Line: #{key}")
           else
             assert_match(/^#{Regexp.quote __FILE__}:#{line_no}: syntax error,/, err.message, "Line: #{key}")
           end
@@ -1217,17 +1232,20 @@ HAML
           assert_equal(expected_message, err.message, "Line: #{key}")
         end
 
-        if Haml::Util.ruby1_8?
-          # Sometimes, the first backtrace entry is *only* in the message.
-          # No idea why.
-          bt =
-            if expected_message == :compile && err.message.include?("\n")
-              err.message.split("\n", 2)[1]
-            else
-              err.backtrace[0]
-            end
-          assert_match(/^#{Regexp.escape(__FILE__)}:#{line_no}/, bt, "Line: #{key}")
-        end
+        # It appears we no longer need this. Keeping it here but commented out
+        # for the time being.
+
+        # if Haml::Util.ruby1_8?
+        #   # Sometimes, the first backtrace entry is *only* in the message.
+        #   # No idea why.
+        #   bt =
+        #     if expected_message == :compile && err.message.include?("\n")
+        #       err.message.split("\n", 2)[1]
+        #     else
+        #       err.backtrace[0]
+        #     end
+        #   assert_match(/^#{Regexp.escape(__FILE__)}:#{line_no}/, bt, "Line: #{key}")
+        # end
       else
         assert(false, "Exception not raised for\n#{key}")
       end
@@ -1272,13 +1290,8 @@ HAML
   end
 
   def test_empty_filter
-    assert_equal(<<END, render(':javascript'))
-<script type='text/javascript'>
-  //<![CDATA[
-    
-  //]]>
-</script>
-END
+    expectation = "<script type='text/javascript'>\n  //<![CDATA[\n    \n  //]]>\n</script>\n"
+    assert_equal(expectation, render(':javascript'))
   end
 
   def test_ugly_filter
@@ -1325,7 +1338,7 @@ HAML
     assert_equal("<p class='my_thing' id='my_thing_42' style='width: 100px;'>My Thing</p>\n",
                  render("%p[custom]{:style => 'width: 100px;'} My Thing", :locals => {:custom => custom}))
   end
-  
+
   def test_object_ref_with_multiple_ids
     cpk_record = CpkRecord.new([42,6,9])
     assert_equal("<p class='struct_cpk_record' id='struct_cpk_record_42_6_9' style='width: 100px;'>CPK Record</p>\n",
@@ -1430,7 +1443,7 @@ HAML
   end
 
   def test_arbitrary_output_option
-    assert_raise_message(Haml::Error, "Invalid output format :html1") do
+    assert_raises_message(Haml::Error, "Invalid output format :html1") do
       engine("%br", :format => :html1)
     end
   end
@@ -1480,7 +1493,7 @@ HAML
 
   # because anything before the doctype triggers quirks mode in IE
   def test_xml_prolog_and_doctype_dont_result_in_a_leading_whitespace_in_html
-    assert_no_match(/^\s+/, render("!!! xml\n!!!", :format => :html4))
+    refute_match(/^\s+/, render("!!! xml\n!!!", :format => :html4))
   end
 
   # HTML5
@@ -1489,15 +1502,25 @@ HAML
   end
 
   # HTML5 custom data attributes
-  def test_html5_data_attributes
+  def test_html5_data_attributes_without_hyphenation
     assert_equal("<div data-author_id='123' data-biz='baz' data-foo='bar'></div>\n",
-      render("%div{:data => {:author_id => 123, :foo => 'bar', :biz => 'baz'}}"))
+      render("%div{:data => {:author_id => 123, :foo => 'bar', :biz => 'baz'}}",
+        :hyphenate_data_attrs => false))
 
     assert_equal("<div data-one_plus_one='2'></div>\n",
-      render("%div{:data => {:one_plus_one => 1+1}}"))
+      render("%div{:data => {:one_plus_one => 1+1}}",
+        :hyphenate_data_attrs => false))
 
-    assert_equal("<div data-foo='Here&apos;s a \"quoteful\" string.'></div>\n",
-      render(%{%div{:data => {:foo => %{Here's a "quoteful" string.}}}})) #'
+    assert_equal("<div data-foo='Here&#x0027;s a \"quoteful\" string.'></div>\n",
+      render(%{%div{:data => {:foo => %{Here's a "quoteful" string.}}}},
+        :hyphenate_data_attrs => false)) #'
+  end
+
+  def test_html5_data_attributes_with_hyphens
+    assert_equal("<div data-foo-bar='blip'></div>\n",
+      render("%div{:data => {:foo_bar => 'blip'}}"))
+    assert_equal("<div data-baz='bang' data-foo-bar='blip'></div>\n",
+      render("%div{:data => {:foo_bar => 'blip', :baz => 'bang'}}"))
   end
 
   def test_html5_data_attributes_with_multiple_defs
@@ -1527,6 +1550,36 @@ HAML
       render("%div{data_hash, :data => 'dat'}"))
     assert_equal("<div data-brat='wurst' data-foo='blip' data='dat'></div>\n",
       render("%div{data_val, :data => {:foo => 'blip', :brat => 'wurst'}}"))
+  end
+
+  def test_xml_doc_using_html5_format_and_mime_type
+    assert_equal(<<XML, render(<<HAML, { :format => :html5, :mime_type => 'text/xml' }))
+<?xml version='1.0' encoding='utf-8' ?>
+<root>
+  <element />
+  <hr />
+</root>
+XML
+!!! XML
+%root
+  %element/
+  %hr
+HAML
+  end
+
+  def test_xml_doc_using_html4_format_and_mime_type
+    assert_equal(<<XML, render(<<HAML, { :format => :html4, :mime_type => 'text/xml' }))
+<?xml version='1.0' encoding='utf-8' ?>
+<root>
+  <element />
+  <hr />
+</root>
+XML
+!!! XML
+%root
+  %element/
+  %hr
+HAML
   end
 
   # New attributes
@@ -1659,6 +1712,34 @@ HTML
    "bang"].join(", ")
 %p foo
 %p bar
+HAML
+  end
+
+  def test_ruby_multiline_with_punctuated_methods_is_continuation
+    assert_equal(<<HTML, render(<<HAML))
+bar, , true, bang
+<p>foo</p>
+<p>bar</p>
+HTML
+= ["bar",
+   "  ".strip!,
+   "".empty?,
+   "bang"].join(", ")
+%p foo
+%p bar
+HAML
+  end
+
+  def test_ruby_character_literals_are_not_continuation
+    html = if RUBY_VERSION < "1.9"
+      "44\n44\n<p>foo</p>\n"
+    else
+      ",\n,\n<p>foo</p>\n"
+    end
+    assert_equal(html, render(<<HAML))
+= ?,
+= ?\,
+%p foo
 HAML
   end
 

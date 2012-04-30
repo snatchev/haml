@@ -1,5 +1,4 @@
-#!/usr/bin/env ruby
-require File.dirname(__FILE__) + '/../test_helper'
+require File.dirname(__FILE__) + '/test_helper'
 
 class ActionView::Base
   def nested_tag
@@ -17,7 +16,7 @@ module Haml::Helpers
   end
 end
 
-class HelperTest < Test::Unit::TestCase
+class HelperTest < MiniTest::Unit::TestCase
   Post = Struct.new('Post', :body, :error_field, :errors)
   class PostErrors
     def on(name)
@@ -30,7 +29,7 @@ class HelperTest < Test::Unit::TestCase
       on(name) || []
     end
   end
-  
+
   def setup
     @base = ActionView::Base.new
     @base.controller = ActionController::Base.new
@@ -68,6 +67,10 @@ class HelperTest < Test::Unit::TestCase
     assert_equal("<li>[1]</li>\n", render("= list_of([[1]]) do |i|\n  = i.inspect"))
     assert_equal("<li>\n  <h1>Fee</h1>\n  <p>A word!</p>\n</li>\n<li>\n  <h1>Fi</h1>\n  <p>A word!</p>\n</li>\n<li>\n  <h1>Fo</h1>\n  <p>A word!</p>\n</li>\n<li>\n  <h1>Fum</h1>\n  <p>A word!</p>\n</li>\n",
       render("= list_of(['Fee', 'Fi', 'Fo', 'Fum']) do |title|\n  %h1= title\n  %p A word!"))
+    assert_equal("<li c='3'>1</li>\n<li c='3'>2</li>\n", render("= list_of([1, 2], {:c => 3}) do |i|\n  = i"))
+    assert_equal("<li c='3'>[1]</li>\n", render("= list_of([[1]], {:c => 3}) do |i|\n  = i.inspect"))
+    assert_equal("<li c='3'>\n  <h1>Fee</h1>\n  <p>A word!</p>\n</li>\n<li c='3'>\n  <h1>Fi</h1>\n  <p>A word!</p>\n</li>\n<li c='3'>\n  <h1>Fo</h1>\n  <p>A word!</p>\n</li>\n<li c='3'>\n  <h1>Fum</h1>\n  <p>A word!</p>\n</li>\n",
+      render("= list_of(['Fee', 'Fi', 'Fo', 'Fum'], {:c => 3}) do |title|\n  %h1= title\n  %p A word!"))
   end
 
   def test_buffer_access
@@ -110,14 +113,14 @@ HAML
       ActionView::Base.new.render(:inline => "<%= concat('foo') %>")
     rescue ArgumentError, NameError
       proper_behavior = true
-    end    
+    end
     assert(proper_behavior)
   end
-  
+
   def test_action_view_included
     assert(Haml::Helpers.action_view?)
   end
-  
+
   def test_form_tag
     # This is usually provided by ActionController::Base.
     def @base.protect_against_forgery?; false; end
@@ -133,17 +136,30 @@ HTML
 HAML
   end
 
-  def test_text_area
-    assert_equal(%(<textarea id="body" name="body">Foo&#x000A;Bar&#x000A; Baz&#x000A;   Boom</textarea>\n),
-                 render('= text_area_tag "body", "Foo\nBar\n Baz\n   Boom"', :action_view))
+  if Haml::Util.ap_geq?("3.2.3")
+    def test_text_area
+      assert_equal(%(<textarea id="body" name="body">\nFoo&#x000A;Bar&#x000A; Baz&#x000A;   Boom</textarea>\n),
+                   render('= text_area_tag "body", "Foo\nBar\n Baz\n   Boom"', :action_view))
 
-    assert_equal(%(<textarea cols="40" id="post_body" name="post[body]" rows="20">Foo bar&#x000A;baz</textarea>\n),
-                 render('= text_area :post, :body', :action_view))    
+      assert_equal(%(<textarea cols="40" id="post_body" name="post[body]" rows="20">\nFoo bar&#x000A;baz</textarea>\n),
+                   render('= text_area :post, :body', :action_view))
 
-    assert_equal(%(<pre>Foo bar&#x000A;   baz</pre>\n),
-                 render('= content_tag "pre", "Foo bar\n   baz"', :action_view))    
+      assert_equal(%(<pre>Foo bar&#x000A;   baz</pre>\n),
+                   render('= content_tag "pre", "Foo bar\n   baz"', :action_view))
+    end
+  else
+    def test_text_area
+      assert_equal(%(<textarea id="body" name="body">Foo&#x000A;Bar&#x000A; Baz&#x000A;   Boom</textarea>\n),
+                   render('= text_area_tag "body", "Foo\nBar\n Baz\n   Boom"', :action_view))
+
+      assert_equal(%(<textarea cols="40" id="post_body" name="post[body]" rows="20">Foo bar&#x000A;baz</textarea>\n),
+                   render('= text_area :post, :body', :action_view))
+
+      assert_equal(%(<pre>Foo bar&#x000A;   baz</pre>\n),
+                   render('= content_tag "pre", "Foo bar\n   baz"', :action_view))
+    end
   end
-  
+
   def test_capture_haml
     assert_equal(<<HTML, render(<<HAML))
 "<p>13</p>\\n"
@@ -273,19 +289,19 @@ HAML
   end
 
   def test_haml_tag_raises_error_for_multiple_content
-    assert_raise(Haml::Error) { render("- haml_tag :p, 'foo' do\n  bar") }
+    assert_raises(Haml::Error) { render("- haml_tag :p, 'foo' do\n  bar") }
   end
 
   def test_haml_tag_flags
     assert_equal("<p />\n", render("- haml_tag :p, :/"))
     assert_equal("<p>kumquat</p>\n", render("- haml_tag :p, :< do\n  kumquat"))
 
-    assert_raise(Haml::Error) { render("- haml_tag :p, 'foo', :/") }
-    assert_raise(Haml::Error) { render("- haml_tag :p, :/ do\n  foo") }
+    assert_raises(Haml::Error) { render("- haml_tag :p, 'foo', :/") }
+    assert_raises(Haml::Error) { render("- haml_tag :p, :/ do\n  foo") }
   end
 
   def test_haml_tag_error_return
-    assert_raise(Haml::Error) { render("= haml_tag :p") }
+    assert_raises(Haml::Error) { render("= haml_tag :p") }
   end
 
   def test_haml_tag_with_multiline_string
@@ -346,7 +362,7 @@ HAML
   end
 
   def test_capture_deals_properly_with_collections
-    Haml::Helpers.module_eval do 
+    Haml::Helpers.module_eval do
       def trc(collection, &block)
         collection.each do |record|
           haml_concat capture_haml(record, &block)
@@ -401,7 +417,7 @@ HAML
   end
 
   def test_error_return
-    assert_raise(Haml::Error, <<MESSAGE) {render("= haml_concat 'foo'")}
+    assert_raises(Haml::Error, <<MESSAGE) {render("= haml_concat 'foo'")}
 haml_concat outputs directly to the Haml template.
 Disregard its return value and use the - operator,
 or use capture_haml to get the value as a String.
@@ -419,7 +435,7 @@ MESSAGE
     render("- something_that_uses_haml_concat")
     assert false, "Expected Haml::Error"
   rescue Haml::Error => e
-    assert_equal 16, e.backtrace[0].scan(/:(\d+)/).first.first.to_i
+    assert_equal 15, e.backtrace[0].scan(/:(\d+)/).first.first.to_i
   end
 
   class ActsLikeTag

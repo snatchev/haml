@@ -152,7 +152,7 @@ RUBY
       private
 
       def resolve_lazy_requires
-        return unless @lazy_requires
+        return unless instance_variable_defined?('@lazy_requires')
 
         @lazy_requires[0...-1].each do |req|
           begin
@@ -266,7 +266,7 @@ END
     # Parses the filtered text with the normal Ruby interpreter.
     # All output sent to `$stdout`, such as with `puts`,
     # is output into the Haml document.
-    # Not available if the {file:HAML_REFERENCE.md#suppress_eval-option `:suppress_eval`} option is set to true.
+    # Not available if the {file:REFERENCE.md#suppress_eval-option `:suppress_eval`} option is set to true.
     # The Ruby code is evaluated in the same context as the Haml template.
     module Ruby
       include Base
@@ -313,8 +313,19 @@ END
       end
     end
 
+    # Parses the filtered text with {Sass} to produce CSS output using SCSS syntax.
+    module Scss
+      include Base
+      lazy_require 'sass/plugin'
+
+      # @see Base#render
+      def render(text)
+        ::Sass::Engine.new(text, ::Sass::Plugin.engine_options.merge(:syntax => :scss)).render
+      end
+    end
+
     # Parses the filtered text with ERB.
-    # Not available if the {file:HAML_REFERENCE.md#suppress_eval-option `:suppress_eval`} option is set to true.
+    # Not available if the {file:REFERENCE.md#suppress_eval-option `:suppress_eval`} option is set to true.
     # Embedded Ruby code is evaluated in the same context as the Haml template.
     module ERB
       include Base
