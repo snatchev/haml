@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-require File.dirname(__FILE__) + '/test_helper'
+require 'test_helper'
 
 class EngineTest < MiniTest::Unit::TestCase
   # A map of erroneous Haml documents to the error messages they should produce.
@@ -64,8 +64,8 @@ MESSAGE
     "%p{:foo => }" => :compile,
     "%p{=> 'bar'}" => :compile,
     "%p{'foo => 'bar'}" => :compile,
-    "%p{:foo => 'bar}" => :unterminated_string,
-    "%p{:foo => 'bar\"}" => :unterminated_string,
+    "%p{:foo => 'bar}" => :compile,
+    "%p{:foo => 'bar\"}" => :compile,
 
     # Regression tests
     "- raise 'foo'\n\n\n\nbar" => ["foo", 1],
@@ -192,11 +192,11 @@ MESSAGE
   def test_dynamic_attributes_with_no_content
     assert_equal(<<HTML, render(<<HAML))
 <p>
-  <a href='http://haml-lang.com'></a>
+  <a href='http://haml.info'></a>
 </p>
 HTML
 %p
-  %a{:href => "http://" + "haml-lang.com"}
+  %a{:href => "http://" + "haml.info"}
 HAML
   end
 
@@ -1084,7 +1084,9 @@ HAML
       render("\n\n= 123\n\n= nil[]", :filename => 'test', :line => 2)
     rescue Exception => e
       assert_kind_of NoMethodError, e
-      assert_match(/test:6/, e.backtrace.first)
+      backtrace = e.backtrace
+      backtrace.shift if rubinius?
+      assert_match(/test:6/, backtrace.first)
     end
   end
 
@@ -1216,18 +1218,9 @@ HAML
         expected_message, line_no = value
         line_no ||= key.split("\n").length
 
+
         if expected_message == :compile
-          if RUBY_VERSION < "1.9" && !jruby?
-            assert_match(/^compile error\n/, err.message, "Line: #{key}")
-          else
-            assert_match(/^#{Regexp.quote __FILE__}:#{line_no}: syntax error,/, err.message, "Line: #{key}")
-          end
-        elsif expected_message == :unterminated_string
-          if jruby?
-            assert_match(/^#{Regexp.quote __FILE__}:#{line_no}: unterminated string meets end of file/, err.message, "Line: #{key}")
-          else
-            assert_match(/^#{Regexp.quote __FILE__}:#{line_no}: syntax error,/, err.message, "Line: #{key}")
-          end
+          assert_match(/(compile error|syntax error|unterminated string|expecting)/, err.message, "Line: #{key}")
         else
           assert_equal(expected_message, err.message, "Line: #{key}")
         end
@@ -1263,7 +1256,9 @@ HAML
   def test_exception
     render("%p\n  hi\n  %a= undefined\n= 12")
   rescue Exception => e
-    assert_match("(test_exception):3", e.backtrace[0])
+    backtrace = e.backtrace
+    backtrace.shift if rubinius?
+    assert_match("(test_exception):3", backtrace[0])
   else
     # Test failed... should have raised an exception
     assert(false)
@@ -1272,7 +1267,7 @@ HAML
   def test_compile_error
     render("a\nb\n- fee)\nc")
   rescue Exception => e
-    assert_match(/\(test_compile_error\):3: syntax error/i, e.message)
+    assert_match(/\(test_compile_error\):3: (syntax error|expecting \$end)/i, e.message)
   else
     assert(false,
            '"a\nb\n- fee)\nc" doesn\'t produce an exception!')

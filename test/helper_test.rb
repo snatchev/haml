@@ -1,4 +1,4 @@
-require File.dirname(__FILE__) + '/test_helper'
+require 'test_helper'
 
 class ActionView::Base
   def nested_tag
@@ -167,7 +167,7 @@ HTML
 - (foo = capture_haml(13) do |a|
   %p= a
 - end; nil)
-= foo.dump
+= foo.inspect
 HAML
   end
 
