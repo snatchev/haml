@@ -1,19 +1,59 @@
 require 'cgi'
 
 module Haml
-  module Compiler
+  class Compiler
     include Haml::Util
 
-    private
+    attr_accessor :options
+
+    def initialize(options)
+      @options     = options
+      @output_tabs = 0
+      @to_merge    = []
+      @precompiled = ''
+    end
+
+    def compile(node)
+      parent = instance_variable_defined?('@node') ? @node : nil
+      @node = node
+      if node.children.empty?
+        send(:"compile_#{node.type}")
+      else
+        send(:"compile_#{node.type}") {node.children.each {|c| compile c}}
+      end
+    ensure
+      @node = parent
+    end
+
+    if RUBY_VERSION < "1.9"
+      # The source code that is evaluated to produce the Haml document.
+      #
+      # In Ruby 1.9, this is automatically converted to the correct encoding
+      # (see {file:REFERENCE.md#encodings the `:encoding` option}).
+      #
+      # @return [String]
+      def precompiled
+        @precompiled
+      end
+    else
+      def precompiled
+        encoding = Encoding.find(@options[:encoding])
+        return @precompiled.force_encoding(encoding) if encoding == Encoding::BINARY
+        return @precompiled.encode(encoding)
+      end
+    end
+
+    def precompiled_with_return_value
+      precompiled + ";" + precompiled_method_return_value
+    end
 
     # Returns the precompiled string with the preamble and postamble
     def precompiled_with_ambles(local_names)
       preamble = <<END.gsub("\n", ";")
 begin
 extend Haml::Helpers
-_hamlout = @haml_buffer = Haml::Buffer.new(@haml_buffer, #{options_for_buffer.inspect})
+_hamlout = @haml_buffer = Haml::Buffer.new(haml_buffer, #{options.for_buffer.inspect})
 _erbout = _hamlout.buffer
-__in_erb_template = true
 END
       postamble = <<END.gsub("\n", ";")
 #{precompiled_method_return_value}
@@ -23,6 +63,8 @@ end
 END
       preamble + locals_code(local_names) + precompiled + postamble
     end
+
+    private
 
     # Returns the string used as the return value of the precompiled method.
     # This method exists so it can be monkeypatched to return modified values.
@@ -75,7 +117,6 @@ END
       return if @options[:suppress_eval]
       push_silent(@node.value[:text])
       keyword = @node.value[:keyword]
-      ruby_block = block_given? && !keyword
 
       if block_given?
         # Store these values because for conditional statements,
@@ -156,10 +197,10 @@ END
         push_generated_script(
           "_hamlout.attributes(#{inspect_obj(t[:attributes])}, #{object_ref}#{attributes_hashes})")
         concat_merged_text(
-          if t[:self_closing] && xhtml?
+          if t[:self_closing] && @options.xhtml?
             " />" + (t[:nuke_outer_whitespace] ? "" : "\n")
           else
-            ">" + ((if t[:self_closing] && html?
+            ">" + ((if t[:self_closing] && @options.html?
                       t[:nuke_outer_whitespace]
                     else
                       !block_given? || t[:preserve_tag] || t[:nuke_inner_whitespace]
@@ -224,15 +265,15 @@ END
 
     def text_for_doctype
       if @node.value[:type] == "xml"
-        return nil if html?
+        return nil if @options.html?
         wrapper = @options[:attr_wrapper]
         return "<?xml version=#{wrapper}1.0#{wrapper} encoding=#{wrapper}#{@node.value[:encoding] || "utf-8"}#{wrapper} ?>"
       end
 
-      if html5?
+      if @options.html5?
         '<!DOCTYPE html>'
       else
-        if xhtml?
+        if @options.xhtml?
           if @node.value[:version] == "1.1"
             '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
           elsif @node.value[:version] == "5"
@@ -248,7 +289,7 @@ END
             end
           end
 
-        elsif html4?
+        elsif @options.html4?
           case @node.value[:type]
           when "strict";   '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">'
           when "frameset"; '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd">'
@@ -262,7 +303,7 @@ END
     # does not output the result.
     def push_silent(text, can_suppress = false)
       flush_merged_text
-      return if can_suppress && options[:suppress_eval]
+      return if can_suppress && @options.suppress_eval?
       @precompiled << "#{resolve_newlines}#{text}\n"
       @output_line += text.count("\n") + 1
     end
@@ -323,7 +364,7 @@ END
     # If `opts[:preserve_script]` is true, Haml::Helpers#find_and_flatten is run on
     # the result before it is added to `@buffer`
     def push_script(text, opts = {})
-      return if options[:suppress_eval]
+      return if @options.suppress_eval?
 
       args = %w[preserve_script in_tag preserve_tag escape_html nuke_inner_whitespace]
       args.map! {|name| opts[name.to_sym]}
@@ -358,11 +399,15 @@ END
 
     # This is a class method so it can be accessed from Buffer.
     def self.build_attributes(is_html, attr_wrapper, escape_attrs, hyphenate_data_attrs, attributes = {})
-      quote_escape = attr_wrapper == '"' ? "&#x0022;" : "&#x0027;"
+      # @TODO this is an absolutely ridiculous amount of arguments. At least
+      # some of this needs to be moved into an instance method.
+      quote_escape     = attr_wrapper == '"' ? "&#x0022;" : "&#x0027;"
       other_quote_char = attr_wrapper == '"' ? "'" : '"'
+      join_char        = hyphenate_data_attrs ? '-' : '_'
 
       if attributes['data'].is_a?(Hash)
         data_attributes = attributes.delete('data')
+        data_attributes = flatten_data_attributes(data_attributes, '', join_char)
         data_attributes = build_data_keys(data_attributes, hyphenate_data_attrs)
         attributes = data_attributes.merge(attributes)
       end
@@ -416,21 +461,34 @@ END
     end
 
     def self.build_data_keys(data_hash, hyphenate)
-      Haml::Util.map_keys(data_hash) do |name| 
+      Hash[data_hash.map do |name, value|
         if name == nil
-          "data"
+          ["data", value]
         elsif hyphenate
-          "data-#{name.to_s.gsub(/_/, '-')}"
+          ["data-#{name.to_s.gsub(/_/, '-')}", value]
         else
-          "data-#{name}"
+          ["data-#{name}", value]
         end
+      end]
+    end
+
+    def self.flatten_data_attributes(data, key, join_char, seen = [])
+      return {key => nil} if seen.include? data.object_id
+      seen << data.object_id
+
+      return {key => data} unless data.is_a?(Hash)
+      data.sort {|x, y| x[0].to_s <=> y[0].to_s}.inject({}) do |hash, array|
+        k, v = array
+        joined = key == '' ? k : [key, k].join(join_char)
+        hash.merge! flatten_data_attributes(v, joined, join_char, seen)
       end
     end
 
     def prerender_tag(name, self_close, attributes)
+      # TODO: consider just passing in the damn options here
       attributes_string = Compiler.build_attributes(
-        html?, @options[:attr_wrapper], @options[:escape_attrs], @options[:hyphenate_data_attrs], attributes)
-      "<#{name}#{attributes_string}#{self_close && xhtml? ? ' /' : ''}>"
+        @options.html?, @options[:attr_wrapper], @options[:escape_attrs], @options[:hyphenate_data_attrs], attributes)
+      "<#{name}#{attributes_string}#{self_close && @options.xhtml? ? ' /' : ''}>"
     end
 
     def resolve_newlines
@@ -463,18 +521,6 @@ END
       else
         raise SyntaxError.new("[HAML BUG] Undefined entry in Haml::Compiler@to_merge.")
       end
-    end
-
-    def compile(node)
-      parent = instance_variable_defined?('@node') ? @node : nil
-      @node = node
-      if node.children.empty?
-        send(:"compile_#{node.type}")
-      else
-        send(:"compile_#{node.type}") {node.children.each {|c| compile c}}
-      end
-    ensure
-      @node = parent
     end
   end
 end

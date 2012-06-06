@@ -1,14 +1,21 @@
 require "rake/clean"
-require 'rake/testtask'
-require 'rubygems/package_task'
+require "rake/testtask"
+require "rubygems/package_task"
 
 task :default => :test
 
-CLEAN << %w(pkg doc coverage .yardoc)
+CLEAN.replace %w(pkg doc coverage .yardoc)
+
+def silence_warnings
+  the_real_stderr, $stderr = $stderr, StringIO.new
+  yield
+ensure
+  $stderr = the_real_stderr
+end
 
 desc "Benchmark Haml against ERb. TIMES=n sets the number of runs, default is 1000."
 task :benchmark do
-  sh "ruby test/benchmark.rb #{ENV['TIMES']}"
+  sh "ruby benchmark.rb #{ENV['TIMES']}"
 end
 
 Rake::TestTask.new do |t|
@@ -16,6 +23,13 @@ Rake::TestTask.new do |t|
   t.test_files = Dir["test/**/*_test.rb"]
   t.verbose = true
 end
+
+task :set_coverage_env do
+  ENV["COVERAGE"] = "true"
+end
+
+desc "Run Simplecov (only works on 1.9)"
+task :coverage => [:set_coverage_env, :test]
 
 gemspec = File.expand_path("../haml.gemspec", __FILE__)
 if File.exist? gemspec
@@ -30,7 +44,9 @@ task :submodules do
 end
 
 begin
-  require 'yard'
+  silence_warnings do
+    require 'yard'
+  end
 
   namespace :doc do
     desc "List all undocumented methods and classes."
@@ -110,4 +126,5 @@ namespace :test do
   task :rails_compatibility => 'test:bundles:install' do
     with_each_gemfile {sh "bundle exec rake test"}
   end
+  task :rc => :rails_compatibility
 end

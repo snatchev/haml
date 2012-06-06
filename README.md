@@ -1,5 +1,7 @@
 # Haml
 
+[![Build Status](https://secure.travis-ci.org/haml/haml.png?branch=master)](http://travis-ci.org/haml/haml)
+
 Haml is a templating engine for HTML. It's designed to make it both easier and
 more pleasant to write HTML documents, by eliminating redundancy, reflecting the
 underlying structure that the document represents, and providing an elegant syntax
@@ -124,6 +126,8 @@ on a specific area:
 
     ruby -Itest test/helper_test.rb -n test_buffer_access
 
+Haml supports Ruby 1.8.7 and higher, so please make sure your changes run on
+both 1.9 and 1.8.
 
 ## Authors
 

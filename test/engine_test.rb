@@ -60,7 +60,7 @@ MESSAGE
     "%p(foo 'bar')" => "Invalid attribute list: \"(foo 'bar')\".",
     "%p(foo 'bar'\nbaz='bang')" => ["Invalid attribute list: \"(foo 'bar'\".", 1],
     "%p(foo='bar'\nbaz 'bang'\nbip='bop')" => ["Invalid attribute list: \"(foo='bar' baz 'bang'\".", 2],
-    "%p{:foo => 'bar' :bar => 'baz'}" => :compile,
+    "%p{'foo' => 'bar' 'bar' => 'baz'}" => :compile,
     "%p{:foo => }" => :compile,
     "%p{=> 'bar'}" => :compile,
     "%p{'foo => 'bar'}" => :compile,
@@ -117,14 +117,14 @@ MESSAGE
   end
 
   def setup
-    return if Haml::Util.ruby1_8?
+    return if RUBY_VERSION < "1.9"
     @old_default_internal = Encoding.default_internal
-    Encoding.default_internal = nil
+    silence_warnings{Encoding.default_internal = nil}
   end
 
   def teardown
-    return if Haml::Util.ruby1_8?
-    Encoding.default_internal = @old_default_internal
+    return if RUBY_VERSION < "1.9"
+    silence_warnings{Encoding.default_internal = @old_default_internal}
   end
 
   def test_empty_render
@@ -154,7 +154,6 @@ MESSAGE
   end
 
   def test_ruby_code_should_work_inside_attributes
-    author = 'hcatlin'
     assert_equal("<p class='3'>foo</p>", render("%p{:class => 1+2} foo").chomp)
   end
 
@@ -412,7 +411,7 @@ HAML
 
   # Regression tests
 
-  unless Haml::Util.ruby1_8?
+  unless RUBY_VERSION < "1.9"
     def test_indentation_after_dynamic_attr_hash
       assert_equal(<<HTML, render(<<HAML))
 <html>
@@ -723,66 +722,17 @@ HAML
     assert_equal("<a href='#'></a>\n", render('%a(href="#")'))
   end
 
-  def test_javascript_filter_with_dynamic_interp_and_escape_html
-    assert_equal(<<HTML, render(<<HAML, :escape_html => true))
-<script type='text/javascript'>
-  //<![CDATA[
-    & < > &
-  //]]>
-</script>
-HTML
-:javascript
- & < > \#{"&"}
-HAML
-  end
-
-  def test_html5_javascript_filter
-    assert_equal(<<HTML, render(<<HAML, :format => :html5))
-<script>
-  //<![CDATA[
-    foo bar
-  //]]>
-</script>
-HTML
-:javascript
-  foo bar
-HAML
-  end
-
-  def test_html5_css_filter
-    assert_equal(<<HTML, render(<<HAML, :format => :html5))
-<style>
-  /*<![CDATA[*/
-    foo bar
-  /*]]>*/
-</style>
-HTML
-:css
-  foo bar
-HAML
-  end
-
-  def test_erb_filter_with_multiline_expr
-    assert_equal(<<HTML, render(<<HAML))
-foobarbaz
-HTML
-:erb
-  <%= "foo" +
-      "bar" +
-      "baz" %>
-HAML
-  end
-
   def test_silent_script_with_hyphen_case
-    assert_equal("", render("- 'foo-case-bar-case'"))
+    assert_equal("", render("- a = 'foo-case-bar-case'"))
   end
 
   def test_silent_script_with_hyphen_end
-    assert_equal("", render("- 'foo-end-bar-end'"))
+    assert_equal("", render("- a = 'foo-end-bar-end'"))
   end
 
   def test_silent_script_with_hyphen_end_and_block
-    assert_equal(<<HTML, render(<<HAML))
+    silence_warnings do
+      assert_equal(<<HTML, render(<<HAML))
 <p>foo-end</p>
 <p>bar-end</p>
 HTML
@@ -790,6 +740,7 @@ HTML
   %p= s
 - end; nil)
 HAML
+    end
   end
 
   def test_if_without_content_and_else
@@ -818,15 +769,6 @@ HAML
       render('%a(href="#") #{"Foo"}'))
 
     assert_equal("<a href='#\"'></a>\n", render('%a(href="#\\"")'))
-  end
-
-  def test_filter_with_newline_and_interp
-    assert_equal(<<HTML, render(<<HAML))
-\\n
-HTML
-:plain
-  \\n\#{""}
-HAML
   end
 
   def test_case_assigned_to_var
@@ -901,9 +843,9 @@ HAML
 foo
 HTML
 - var = if false
-- elsif 12
+- elsif 12 == 12
   - "foo"
-- elsif 14; "bar"
+- elsif 14 == 14; "bar"
 - else
   - "baz"
 = var
@@ -1212,7 +1154,9 @@ HAML
   EXCEPTION_MAP.each do |key, value|
     define_method("test_exception (#{key.inspect})") do
       begin
-        render(key, :filename => __FILE__)
+        silence_warnings do
+          render(key, :filename => "(test_exception (#{key.inspect}))")
+        end
       rescue Exception => err
         value = [value] unless value.is_a?(Array)
         expected_message, line_no = value
@@ -1225,20 +1169,6 @@ HAML
           assert_equal(expected_message, err.message, "Line: #{key}")
         end
 
-        # It appears we no longer need this. Keeping it here but commented out
-        # for the time being.
-
-        # if Haml::Util.ruby1_8?
-        #   # Sometimes, the first backtrace entry is *only* in the message.
-        #   # No idea why.
-        #   bt =
-        #     if expected_message == :compile && err.message.include?("\n")
-        #       err.message.split("\n", 2)[1]
-        #     else
-        #       err.backtrace[0]
-        #     end
-        #   assert_match(/^#{Regexp.escape(__FILE__)}:#{line_no}/, bt, "Line: #{key}")
-        # end
       else
         assert(false, "Exception not raised for\n#{key}")
       end
@@ -1284,33 +1214,6 @@ HAML
                  render("/[if !(IE 6)|(IE 7)] Bracket: ]"))
   end
 
-  def test_empty_filter
-    expectation = "<script type='text/javascript'>\n  //<![CDATA[\n    \n  //]]>\n</script>\n"
-    assert_equal(expectation, render(':javascript'))
-  end
-
-  def test_ugly_filter
-    assert_equal(<<END, render(":sass\n  #foo\n    bar: baz", :ugly => true))
-#foo {
-  bar: baz; }
-END
-  end
-
-  def test_css_filter
-    assert_equal(<<HTML, render(<<HAML))
-<style type='text/css'>
-  /*<![CDATA[*/
-    #foo {
-      bar: baz; }
-  /*]]>*/
-</style>
-HTML
-:css
-  #foo {
-    bar: baz; }
-HAML
-  end
-
   def test_local_assigns_dont_modify_class
     assert_equal("bar\n", render("= foo", :locals => {:foo => 'bar'}))
     assert_equal(nil, defined?(foo))
@@ -1351,6 +1254,9 @@ HAML
     string.instance_variable_set("@var", "Instance variable")
     b = string.instance_eval do
       var = "Local variable"
+      # Silence unavoidable warning; Ruby doesn't know we're going to use this
+      # later.
+      nil if var
       binding
     end
 
@@ -1423,6 +1329,20 @@ HAML
 
     assert_equal("<p>#{'s' * 75}</p>\n",
                  render("%p= 's' * 75", :ugly => true))
+  end
+
+  def test_remove_whitespace_true
+    assert_equal("<div id='outer'><div id='inner'><p>hello world</p></div></div>",
+                 render("#outer\n  #inner\n    %p hello world", :remove_whitespace => true))
+    assert_equal("<p>hello world<pre>foo   bar\nbaz</pre></p>", render(<<HAML, :remove_whitespace => true))
+%p
+  hello world
+  %pre
+    foo   bar
+    baz
+HAML
+    assert_equal("<div><span>foo</span> <span>bar</span></div>",
+                 render('%div <span>foo</span> <span>bar</span>', :remove_whitespace => true))
   end
 
   def test_auto_preserve_unless_ugly
@@ -1516,6 +1436,22 @@ HAML
       render("%div{:data => {:foo_bar => 'blip'}}"))
     assert_equal("<div data-baz='bang' data-foo-bar='blip'></div>\n",
       render("%div{:data => {:foo_bar => 'blip', :baz => 'bang'}}"))
+  end
+
+  def test_html5_data_attributes_with_nested_hash
+    assert_equal("<div data-a-b='c'></div>\n", render(<<-HAML))
+- hash = {:a => {:b => 'c'}}
+- hash[:d] = hash
+%div{:data => hash}
+HAML
+  end
+
+  def test_html5_data_attributes_with_nested_hash_and_without_hyphenation
+    assert_equal("<div data-a_b='c'></div>\n", render(<<-HAML, :hyphenate_data_attrs => false))
+- hash = {:a => {:b => 'c'}}
+- hash[:d] = hash
+%div{:data => hash}
+HAML
   end
 
   def test_html5_data_attributes_with_multiple_defs
@@ -1904,7 +1840,7 @@ HTML
 HAML
   end
 
-  unless Haml::Util.ruby1_8?
+  unless RUBY_VERSION < "1.9"
     def test_default_encoding
       assert_equal(Encoding.find("utf-8"), render(<<HAML.encode("us-ascii")).encoding)
 %p bar

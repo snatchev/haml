@@ -8,7 +8,6 @@ module Haml
     # It's used to raise an error when the return value of a helper is used
     # when it shouldn't be.
     class ErrorReturn
-      # @param message [String] The error message to raise when \{#to\_s} is called
       def initialize(method)
         @message = <<MESSAGE
 #{method} outputs directly to the Haml template.
@@ -71,7 +70,7 @@ MESSAGE
     #     context.haml_tag :p, "Stuff"
     #
     def init_haml_helpers
-      @haml_buffer = Haml::Buffer.new(@haml_buffer, Haml::Engine.new('').send(:options_for_buffer))
+      @haml_buffer = Haml::Buffer.new(haml_buffer, Options.new.for_buffer)
       nil
     end
 
@@ -457,19 +456,20 @@ MESSAGE
     #     </table>
     #
     # @param name [#to_s] The name of the tag
-    # @param flags [Array<Symbol>] Haml end-of-tag flags
     #
-    # @overload haml_tag(name, *flags, attributes = {})
+    # @overload haml_tag(name, *rest, attributes = {})
     #   @yield The block of Haml code within the tag
     # @overload haml_tag(name, text, *flags, attributes = {})
     #   @param text [#to_s] The text within the tag
+    #   @param flags [Array<Symbol>] Haml end-of-tag flags
     def haml_tag(name, *rest, &block)
       ret = ErrorReturn.new("haml_tag")
 
       text = rest.shift.to_s unless [Symbol, Hash, NilClass].any? {|t| rest.first.is_a? t}
       flags = []
       flags << rest.shift while rest.first.is_a? Symbol
-      attrs = Haml::Util.map_keys(rest.shift || {}) {|key| key.to_s}
+      attrs = (rest.shift || {})
+      attrs.keys.each {|key| attrs[key.to_s] = attrs.delete(key)} unless attrs.empty?
       name, attrs = merge_name_and_attributes(name.to_s, attrs)
 
       attributes = Haml::Compiler.build_attributes(haml_buffer.html?,
@@ -600,7 +600,7 @@ MESSAGE
     #
     # @return [Haml::Buffer]
     def haml_buffer
-      @haml_buffer
+      @haml_buffer if defined? @haml_buffer
     end
 
     # Gives a proc the same local `_hamlout` and `_erbout` variables
@@ -611,6 +611,7 @@ MESSAGE
     def haml_bind_proc(&proc)
       _hamlout = haml_buffer
       _erbout = _hamlout.buffer
+      _erbout.to_s #"use" the variable to silence warnings
       proc { |*args| proc.call(*args) }
     end
   end

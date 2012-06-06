@@ -1,5 +1,4 @@
 require 'test_helper'
-require 'sass/plugin'
 require 'mocks/article'
 
 require 'action_pack/version'
@@ -41,10 +40,10 @@ end
 
 class TemplateTest < MiniTest::Unit::TestCase
   TEMPLATE_PATH = File.join(File.dirname(__FILE__), "templates")
-  TEMPLATES = %w{         very_basic        standard    helpers
-    whitespace_handling   original_engine   list        helpful
-    silent_script         tag_parsing       just_stuff  partials
-    filters               nuke_outer_whitespace         nuke_inner_whitespace
+  TEMPLATES = %w{          very_basic        standard    helpers
+    whitespace_handling    original_engine   list        helpful
+    silent_script          tag_parsing       just_stuff  partials
+    nuke_outer_whitespace  nuke_inner_whitespace
     render_layout }
   # partial layouts were introduced in 2.0.0
   TEMPLATES << 'partial_layout' unless ActionPack::VERSION::MAJOR < 2
@@ -53,27 +52,13 @@ class TemplateTest < MiniTest::Unit::TestCase
     @base = create_base
 
     # filters template uses :sass
-    Sass::Plugin.options.update(:line_comments => true, :style => :compact)
+    # Sass::Plugin.options.update(:line_comments => true, :style => :compact)
   end
 
   def create_base
     vars = { 'article' => Article.new, 'foo' => 'value one' }
 
-    unless Haml::Util.has?(:instance_method, ActionView::Base, :finder)
-      base = ActionView::Base.new(TEMPLATE_PATH, vars)
-    else
-      # Rails 2.1.0
-      base = ActionView::Base.new([], vars)
-      base.finder.append_view_path(TEMPLATE_PATH)
-    end
-
-    if Haml::Util.has?(:private_method, base, :evaluate_assigns)
-      # Rails < 3.0
-      base.send(:evaluate_assigns)
-    elsif Haml::Util.has?(:private_method, base, :_evaluate_assigns_and_ivars)
-      # Rails 2.2
-      base.send(:_evaluate_assigns_and_ivars)
-    end
+    base = ActionView::Base.new(TEMPLATE_PATH, vars)
 
     # This is needed by RJS in (at least) Rails 3
     base.instance_variable_set('@template', base)
@@ -81,13 +66,6 @@ class TemplateTest < MiniTest::Unit::TestCase
     # This is used by form_for.
     # It's usually provided by ActionController::Base.
     def base.protect_against_forgery?; false; end
-
-    # In Rails <= 2.1, a fake controller object was needed
-    # to provide the controller path.
-    if ActionPack::VERSION::MAJOR < 2 ||
-        (ActionPack::VERSION::MAJOR == 2 && ActionPack::VERSION::MINOR < 2)
-      base.controller = DummyController.new
-    end
 
     base
   end
@@ -113,9 +91,11 @@ class TemplateTest < MiniTest::Unit::TestCase
       render_method ||= proc { |n| @base.render(:file => n) }
     end
 
-    load_result(name).split("\n").zip(render_method[name].split("\n")).each_with_index do |pair, line|
-      message = "template: #{name}\nline:     #{line}"
-      assert_equal(pair.first, pair.last, message)
+    silence_warnings do
+      load_result(name).split("\n").zip(render_method[name].split("\n")).each_with_index do |pair, line|
+        message = "template: #{name}\nline:     #{line}"
+        assert_equal(pair.first, pair.last, message)
+      end
     end
   rescue Haml::Util.av_template_class(:Error) => e
     if e.message =~ /Can't run [\w:]+ filter; required (one of|file) ((?:'\w+'(?: or )?)+)(, but none were found| not found)/
@@ -192,26 +172,6 @@ class TemplateTest < MiniTest::Unit::TestCase
     assert_equal("2\n", render("= 1+1"))
   end
 
-  unless Haml::Util.ap_geq_3?
-    def test_form_for_error_return
-      assert_raises(Haml::Error) { render(<<HAML) }
-= form_for :article, @article, :url => '' do |f|
-  Title:
-  = f.text_field :title
-  Body:
-  = f.text_field :body
-HAML
-    end
-
-    def test_form_tag_error_return
-      assert_raises(Haml::Error) { render(<<HAML) }
-= form_tag '' do
-  Title:
-  Body:
-HAML
-    end
-  end
-
   def test_haml_options
     old_options = Haml::Template.options.dup
     Haml::Template.options[:suppress_eval] = true
@@ -223,7 +183,6 @@ HAML
   end
 
   def test_with_output_buffer_with_ugly
-    return unless Haml::Util.has?(:instance_method, ActionView::Base, :with_output_buffer)
     assert_equal(<<HTML, render(<<HAML, :ugly => true))
 <p>
 foo
@@ -238,7 +197,7 @@ HTML
     bar
     = "foo".gsub(/./) do |s|
       - "flup"
-  - end; nil)
+  - end)
   baz
 HAML
   end
@@ -274,38 +233,16 @@ END
     end
   end
 
-  if defined?(ActionView::OutputBuffer) &&
-      Haml::Util.has?(:instance_method, ActionView::OutputBuffer, :append_if_string=)
-    def test_av_block_deprecation_warning
-      assert_warning(/^DEPRECATION WARNING: - style block helpers are deprecated\. Please use =\./) do
-        assert_equal <<HTML, render(<<HAML, :action_view)
-<form #{rails_form_attr}action="" method="post">#{rails_form_opener}
-  Title:
-  <input id="article_title" name="article[title]" size="30" type="text" value="Hello" />
-  Body:
-  <input id="article_body" name="article[body]" size="30" type="text" value="World" />
-</form>
-HTML
-- form_for #{form_for_calling_convention(:article)}, :url => '' do |f|
-  Title:
-  = f.text_field :title
-  Body:
-  = f.text_field :body
-HAML
-      end
-    end
-  end
-
   if ActionPack::VERSION::MAJOR >= 3
     # Rails 3's #label helper can take a block.
     def test_form_builder_label_with_block
       assert_equal(<<HTML, render(<<HAML, :action_view))
-<form #{rails_form_attr}action="" method="post">#{rails_form_opener}
+<form accept-charset="UTF-8" action="" method="post">#{rails_form_opener}
   <label for="article_title">Block content
   </label>
 </form>
 HTML
-#{rails_block_helper_char} form_for #{form_for_calling_convention(:article)}, :url => '' do |f|
+= form_for @article, :as => :article, :html => {:class => nil, :id => nil}, :url => '' do |f|
   = f.label :title do
     Block content
 HAML
@@ -378,10 +315,8 @@ HAML
       assert_equal("Foo & Bar", render('- concat(Haml::Util.html_safe("Foo & Bar"))', :action_view))
     end
 
-    if Haml::Util.has?(:instance_method, ActionView::Helpers::TextHelper, :safe_concat)
-      def test_xss_protection_with_safe_concat
-        assert_equal("Foo & Bar", render('- safe_concat "Foo & Bar"', :action_view))
-      end
+    def test_xss_protection_with_safe_concat
+      assert_equal("Foo & Bar", render('- safe_concat "Foo & Bar"', :action_view))
     end
 
     ## Regression
@@ -402,14 +337,14 @@ HAML
 
     def test_xss_protection_with_form_for
       assert_equal(<<HTML, render(<<HAML, :action_view))
-<form #{rails_form_attr}action="" method="post">#{rails_form_opener}
+<form accept-charset="UTF-8" action="" method="post">#{rails_form_opener}
   Title:
   <input id="article_title" name="article[title]" size="30" type="text" value="Hello" />
   Body:
   <input id="article_body" name="article[body]" size="30" type="text" value="World" />
 </form>
 HTML
-#{rails_block_helper_char} form_for #{form_for_calling_convention(:article)}, :url => '' do |f|
+= form_for @article, :as => :article, :html => {:class => nil, :id => nil}, :url => '' do |f|
   Title:
   = f.text_field :title
   Body:

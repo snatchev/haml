@@ -2,9 +2,34 @@
 
 ## 3.2.0 (Unreleased)
 
-* Add Kramdown support to Markdown filter.
+* Haml now supports only Rails 3 and above, and Ruby 1.8.7 and above. If you
+  still need support for Rails 2 and Ruby 1.8.6, please use Haml 3.1.x which
+  will continue to be maintained for bug fixes.
 
-* Add RedCarpet support to Markdown filter.
+* Added `remove_whitespace` option to always remove all whitespace around Haml
+  tags. (thanks to [Tim van der Horst](https://github.com/vdh))
+
+* Haml now flattens deeply nested data attribute hashes. For example:
+
+  `.foo{:data => {:a => "b", :c => {:d => "e", :f => "g"}}}`
+
+  would render to:
+
+  `<div class='foo' data-a='b' data-c-d='e' data-c-f='g'></div>`
+
+  (thanks to [Péter Pál Koszta](https://github.com/koszta))
+
+* Filters that rely on third-party template engines are now implemented using
+  [Tilt](github.com/rtomayko/tilt). Several new filters have been added, namely
+  SCSS (:scss), LessCSS, (:less), and Coffeescript (:coffee/:coffeescript).
+
+  Though the list of "official" filters is kept intentionally small, Haml comes
+  with a helper method that makes adding support for other Tilt-based template
+  engines trivial.
+
+  As of 3.2, Haml will also ship with a "haml-contrib" gem that includes useful
+  but less-frequently used filters and helpers. This includes several additional
+  filters such as Nokogiri, Yajl, Markaby, and others.
 
 * Generate object references based on `#to_key` if it exists in preference to
   `#id`.
@@ -16,9 +41,6 @@
   option} that converts underscores to hyphens in your HTML5 data keys. This is
   a language change from 3.1 and is enabled by default.
   (thanks to [Andrew Smith](https://github.com/fullsailor))
-
-* Add SCSS filter.
-  (thanks to [Matt Wildig](https://github.com/mattwildig))
 
 * Helper `list_of` takes an extra argument that is rendered into list item
   attributes.
@@ -45,7 +67,12 @@
 * Fix multiline silent comments: Haml previously did not allow free indentation
   inside multline silent comments.
 
-## 3.1.5 (Unreleased)
+## 3.1.6
+
+* In indented mode, don't reindent buffers that contain preserved tags, and
+  provide a better workaround for Rails 3.2.3's textarea helpers.
+
+## 3.1.5
 
 * Respect Rails' `html_safe` flag when escaping attribute values
   (thanks to [Gerad Suyderhoud](https://github.com/gerad)).
@@ -1162,7 +1189,7 @@ There is now a `:cdata` filter for wrapping text in CDATA tags.
 
 #### `:sass`
 
-The `:sass` filter now uses options set in {Sass::Plugin},
+The `:sass` filter now uses options set in `Sass::Plugin`,
 if they're available.
 
 ### Executables

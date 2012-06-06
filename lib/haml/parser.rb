@@ -1,8 +1,7 @@
 require 'strscan'
-require 'haml/shared'
 
 module Haml
-  module Parser
+  class Parser
     include Haml::Util
 
     # Designates an XHTML/XML element.
@@ -76,53 +75,14 @@ module Haml
     # The Regex that matches a literal string or symbol value
     LITERAL_VALUE_REGEX = /:(\w*)|(["'])((?![\\#]|\2).|\\.)*\2/
 
-    private
-
-    # @private
-    class Line < Struct.new(:text, :unstripped, :full, :index, :compiler, :eod)
-      alias_method :eod?, :eod
-
-      # @private
-      def tabs
-        line = self
-        @tabs ||= compiler.instance_eval do
-          break 0 if line.text.empty? || !(whitespace = line.full[/^\s+/])
-
-          if @indentation.nil?
-            @indentation = whitespace
-
-            if @indentation.include?(?\s) && @indentation.include?(?\t)
-              raise SyntaxError.new("Indentation can't use both tabs and spaces.", line.index)
-            end
-
-            @flat_spaces = @indentation * (@template_tabs+1) if flat?
-            break 1
-          end
-
-          tabs = whitespace.length / @indentation.length
-          break tabs if whitespace == @indentation * tabs
-          break @template_tabs + 1 if flat? && whitespace =~ /^#{@flat_spaces}/
-
-          raise SyntaxError.new(<<END.strip.gsub("\n", ' '), line.index)
-Inconsistent indentation: #{Haml::Shared.human_indentation whitespace, true} used for indentation,
-but the rest of the document was indented using #{Haml::Shared.human_indentation @indentation}.
-END
-        end
-      end
-    end
-
-    # @private
-    class ParseNode < Struct.new(:type, :line, :value, :parent, :children)
-      def initialize(*args)
-        super
-        self.children ||= []
-      end
-
-      def inspect
-        text = "(#{type} #{value.inspect}"
-        children.each {|c| text << "\n" << c.inspect.gsub(/^/, "  ")}
-        text + ")"
-      end
+    def initialize(template, options)
+      # :eod is a special end-of-document marker
+      @template       = (template.rstrip).split(/\r\n|\r|\n/) + [:eod, :eod]
+      @options        = options
+      @flat           = false
+      @index          = 0
+      @template_index = 0
+      @template_tabs  = 0
     end
 
     def parse
@@ -161,6 +121,59 @@ END
       # Close all the open tags
       close until @parent.type == :root
       @root
+    rescue Haml::Error => e
+      e.backtrace.unshift "#{@options[:filename]}:#{(e.line ? e.line + 1 : @index) + @options[:line] - 1}"
+      raise
+    end
+
+
+    private
+
+    # @private
+    class Line < Struct.new(:text, :unstripped, :full, :index, :compiler, :eod)
+      alias_method :eod?, :eod
+
+      # @private
+      def tabs
+        line = self
+        @tabs ||= compiler.instance_eval do
+          break 0 if line.text.empty? || !(whitespace = line.full[/^\s+/])
+
+          if @indentation.nil?
+            @indentation = whitespace
+
+            if @indentation.include?(?\s) && @indentation.include?(?\t)
+              raise SyntaxError.new("Indentation can't use both tabs and spaces.", line.index)
+            end
+
+            @flat_spaces = @indentation * (@template_tabs+1) if flat?
+            break 1
+          end
+
+          tabs = whitespace.length / @indentation.length
+          break tabs if whitespace == @indentation * tabs
+          break @template_tabs + 1 if flat? && whitespace =~ /^#{@flat_spaces}/
+
+          raise SyntaxError.new(<<END.strip.gsub("\n", ' '), line.index)
+Inconsistent indentation: #{Haml::Util.human_indentation whitespace, true} used for indentation,
+but the rest of the document was indented using #{Haml::Util.human_indentation @indentation}.
+END
+        end
+      end
+    end
+
+    # @private
+    class ParseNode < Struct.new(:type, :line, :value, :parent, :children)
+      def initialize(*args)
+        super
+        self.children ||= []
+      end
+
+      def inspect
+        text = "(#{type} #{value.inspect}"
+        children.each {|c| text << "\n" << c.inspect.gsub(/^/, "  ")}
+        text + ")"
+      end
     end
 
     # Processes and deals with lowering indentation.
@@ -492,6 +505,11 @@ END
         nuke_inner_whitespace = nuke_whitespace.include? '<'
       end
 
+      if @options[:remove_whitespace]
+        nuke_outer_whitespace = true
+        nuke_inner_whitespace = true
+      end
+
       value = value.to_s.strip
       [tag_name, attributes, attributes_hashes, object_ref, nuke_outer_whitespace,
        nuke_inner_whitespace, action, value, last_line || @index]
@@ -530,7 +548,7 @@ END
         break if name.nil?
 
         if name == false
-          text = (Haml::Shared.balance(line, ?(, ?)) || [line]).first
+          text = (Haml::Util.balance(line, ?(, ?)) || [line]).first
           raise Haml::SyntaxError.new("Invalid attribute list: #{text.inspect}.", last_line - 1)
         end
         attributes[name] = value
@@ -676,28 +694,8 @@ END
         !((text[-3..-2] =~ /\W\?/) || text[-3..-2] == "?\\")
     end
 
-    def contains_interpolation?(str)
-      str.include?('#{')
-    end
-
-    def unescape_interpolation(str, escape_html = nil)
-      res = ''
-      rest = Haml::Shared.handle_interpolation str.dump do |scan|
-        escapes = (scan[2].size - 1) / 2
-        res << scan.matched[0...-3 - escapes]
-        if escapes % 2 == 1
-          res << '#{'
-        else
-          content = eval('"' + balance(scan, ?{, ?}, 1)[0][0...-1] + '"')
-          content = "Haml::Helpers.html_escape((#{content}))" if escape_html
-          res << '#{' + content + "}"# Use eval to get rid of string escapes
-        end
-      end
-      res + rest
-    end
-
     def balance(*args)
-      res = Haml::Shared.balance(*args)
+      res = Haml::Util.balance(*args)
       return res if res
       raise SyntaxError.new("Unbalanced brackets.")
     end

@@ -125,18 +125,18 @@ HAML
     # This is usually provided by ActionController::Base.
     def @base.protect_against_forgery?; false; end
     assert_equal(<<HTML, render(<<HAML, :action_view))
-<form #{rails_form_attr}action="foo" method="post">#{rails_form_opener}
+<form accept-charset="UTF-8" action="foo" method="post">#{rails_form_opener}
   <p>bar</p>
   <strong>baz</strong>
 </form>
 HTML
-#{rails_block_helper_char} form_tag 'foo' do
+= form_tag 'foo' do
   %p bar
   %strong baz
 HAML
   end
 
-  if Haml::Util.ap_geq?("3.2.3")
+  if Rails.version >= "3.2.3"
     def test_text_area
       assert_equal(%(<textarea id="body" name="body">\nFoo&#x000A;Bar&#x000A; Baz&#x000A;   Boom</textarea>\n),
                    render('= text_area_tag "body", "Foo\nBar\n Baz\n   Boom"', :action_view))
@@ -166,7 +166,7 @@ HAML
 HTML
 - (foo = capture_haml(13) do |a|
   %p= a
-- end; nil)
+- end)
 = foo.inspect
 HAML
   end
@@ -177,7 +177,7 @@ HAML
 <strong>bar</strong>
 </div>
 HTML
-#{rails_block_helper_char} content_tag :div do
+= content_tag :div do
   %p bar
   %strong bar
 HAML
@@ -185,13 +185,12 @@ HAML
 
   def test_content_tag_error_wrapping
     def @base.protect_against_forgery?; false; end
-    error_class = Haml::Util.ap_geq_3? ? "field_with_errors" : "fieldWithErrors"
     assert_equal(<<HTML, render(<<HAML, :action_view))
-<form #{rails_form_attr}action="" method="post">#{rails_form_opener}
-  <div class="#{error_class}"><label for="post_error_field">Error field</label></div>
+<form accept-charset="UTF-8" action="" method="post">#{rails_form_opener}
+  <div class="field_with_errors"><label for="post_error_field">Error field</label></div>
 </form>
 HTML
-#{rails_block_helper_char} form_for #{form_for_calling_convention('post')}, :url => '' do |f|
+= form_for @post, :as => :post, :html => {:class => nil, :id => nil}, :url => '' do |f|
   = f.label 'error_field'
 HAML
   end
@@ -199,9 +198,9 @@ HAML
   def test_form_tag_in_helper_with_string_block
     def @base.protect_against_forgery?; false; end
     assert_equal(<<HTML, render(<<HAML, :action_view))
-<form #{rails_form_attr}action="/foo" method="post">#{rails_form_opener}bar</form>
+<form accept-charset="UTF-8" action="/foo" method="post">#{rails_form_opener}bar</form>
 HTML
-#{rails_block_helper_char} wacky_form
+= wacky_form
 HAML
   end
 
@@ -245,8 +244,8 @@ HAML
     assert_equal("<p class='foo bar' id='some_id'></p>\n", render("- haml_tag 'p.foo.bar#some_id'"))
   end
 
-  def test_haml_tag_name_and_attribute_classes_merging
-    assert_equal("<p class='foo bar' id='some_id'></p>\n", render("- haml_tag 'p#some_id.foo', :class => 'bar'"))
+  def test_haml_tag_name_and_attribute_classes_merging_with_id
+    assert_equal("<p class='bar foo' id='some_id'></p>\n", render("- haml_tag 'p#some_id.foo', :class => 'bar'"))
   end
 
   def test_haml_tag_name_and_attribute_classes_merging
@@ -357,8 +356,7 @@ HAML
   end
 
   def test_indented_capture
-    prior = Haml::Util.ap_geq_3? ? "" : "  \n"
-    assert_equal("#{prior}  Foo\n  ", @base.render(:inline => "  <% res = capture do %>\n  Foo\n  <% end %><%= res %>"))
+    assert_equal("  Foo\n  ", @base.render(:inline => "  <% res = capture do %>\n  Foo\n  <% end %><%= res %>"))
   end
 
   def test_capture_deals_properly_with_collections
